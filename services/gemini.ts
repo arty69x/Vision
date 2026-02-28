@@ -3,20 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
-import { DEFAULT_GEMINI_API_KEY } from "../utils/apiKey";
 
 export const sendMessageStream = async (
   message: string,
   history: Content[],
   images?: string[],
-  outputFormat: 'nextjs' | 'tsx' | 'html' | 'json' | 'txt' = 'html',
+  outputFormat: 'nextjs' | 'html' | 'json' | 'txt' = 'html',
   files?: { name: string, content: string }[],
   model: string = "gemini-3.1-pro-preview"
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || DEFAULT_GEMINI_API_KEY });
+  const customKey = localStorage.getItem('custom_gemini_api_key');
+  const apiKey = customKey || process.env.API_KEY;
+  const ai = new GoogleGenAI({ apiKey });
   const formatInstructions = {
     nextjs: "Output a single, reusable Next.js (React) functional component using Tailwind CSS. Include all necessary sub-components within the same block.",
-    tsx: "Output a single, reusable TSX React functional component using Tailwind CSS utility classes only.",
     html: "Output raw HTML with Tailwind CSS utility classes. Do not include React boilerplate.",
     json: "Output a structured JSON representation of the requested data or layout. Ensure it is valid JSON.",
     txt: "Output plain text. Do not use markdown code blocks unless specifically requested."
@@ -48,10 +48,8 @@ export const sendMessageStream = async (
   
   if (flags.vue) {
     formatInstructions.nextjs = "Output a single, reusable Vue 3 Single File Component (<template>, <script setup>, <style>) using Tailwind CSS.";
-    formatInstructions.tsx = formatInstructions.nextjs;
   } else if (flags.html) {
     formatInstructions.nextjs = formatInstructions.html;
-    formatInstructions.tsx = formatInstructions.html;
   }
 
   const chat = ai.chats.create({
@@ -71,18 +69,15 @@ Follow these strict rules for MAX MODE:
    - Use \`https://picsum.photos/seed/{keyword}/{width}/{height}\` for any placeholder images, choosing a keyword that matches the image context.
 5. INTERACTIVITY & STATE: For interactive elements within the generated component, implement basic state management using React's useState hook to simulate hover, active, and focused states visually.
 6. CLEAN CODE: Write clean, modern React functional components. Use semantic HTML tags (<nav>, <main>, <section>, <article>).
-7. ACCESSIBILITY FIRST: Ensure proper ARIA attributes, semantic HTML tags, and screen-reader friendly structures. Review the generated Tailwind CSS component for ARIA live regions and ensure they are correctly implemented for dynamic content updates, enhancing screen reader experience. Add distinct, clear focus states (\`focus:ring-2 focus:ring-blue-500 focus:outline-none\`) for all interactive elements for improved accessibility.
+7. ACCESSIBILITY FIRST: Ensure proper ARIA attributes, semantic HTML tags, and screen-reader friendly structures. Your code will be run through an automated accessibility checker. Ensure all images have alt text, all icon-only buttons have aria-labels, and all interactive elements have clear focus states.
 8. VARIATIONS & STATES: Generate three additional variations of the Tailwind CSS component, focusing on different color palettes and font pairings. Ensure each variation maintains accessibility standards and responsiveness.
 9. TOOLTIPS & LABELS: For any interactive elements (buttons, icons) that lack clear text labels, add descriptive tooltips (\`title\` attributes or custom CSS tooltips) that appear on hover or focus.
 10. ANIMATIONS & EFFECTS: Add interactive hover effects and subtle animations to elements like buttons and cards to improve user engagement. Implement subtle parallax scrolling effects on background elements within the generated Tailwind CSS component to add depth and visual interest.
 11. NEVER TRUNCATE: NEVER use placeholders like \`// ... rest of the code\` or \`/* content goes here */\`. You MUST write the complete, fully working code.
 12. FORMAT: ${formatInstructions[outputFormat]}
 13. OUTPUT: Output ONLY the valid React JSX code block. Do not include markdown formatting outside the code block, explanations, or setup instructions. Start directly with the component code.
-14. ALWAYS TAILWIND: Every UI output must rely on Tailwind utility classes only.
 
 ${dynamicInstructions}
-
-${GLOBAL_TW4_SYSTEM_APPENDIX}
 
 If the user asks a general question not related to generating UI code, answer them normally and helpfully.`,
       tools: [{ codeExecution: {} }],

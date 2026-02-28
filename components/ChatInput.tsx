@@ -9,18 +9,31 @@ import { motion, AnimatePresence } from "framer-motion";
 interface ChatInputProps {
   onSend: (message: string, images?: string[], files?: { name: string, content: string }[]) => void;
   disabled: boolean;
+  selectedImages: { original: string, thumb: string }[];
+  setSelectedImages: React.Dispatch<React.SetStateAction<{ original: string, thumb: string }[]>>;
+  selectedFiles: { name: string, content: string, size: number }[];
+  setSelectedFiles: React.Dispatch<React.SetStateAction<{ name: string, content: string, size: number }[]>>;
+  uploading: boolean;
+  uploadProgress: number;
+  onProcessFiles: (files: FileList | File[]) => Promise<void>;
 }
 
 const MAX_TEXT_FILE_SIZE = 1 * 1024 * 1024; // 1MB
 const MAX_TEXT_FILE_CHARS = 100000;
 const MAX_INPUT_CHARS = 4000;
 
-export const ChatInput: React.FC<ChatInputProps> = ({ onSend, disabled }) => {
+export const ChatInput: React.FC<ChatInputProps> = ({ 
+  onSend, 
+  disabled, 
+  selectedImages, 
+  setSelectedImages, 
+  selectedFiles, 
+  setSelectedFiles,
+  uploading,
+  uploadProgress,
+  onProcessFiles
+}) => {
   const [input, setInput] = useState("");
-  const [selectedImages, setSelectedImages] = useState<{ original: string, thumb: string }[]>([]);
-  const [selectedFiles, setSelectedFiles] = useState<{ name: string, content: string, size: number }[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -74,117 +87,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, disabled }) => {
     }
   };
 
-  const generateThumbnail = (dataUrl: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 200;
-        const MAX_HEIGHT = 200;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
-      img.onerror = () => reject(new Error("Failed to load image for thumbnail generation"));
-      img.src = dataUrl;
-    });
-  };
-
-  const processFiles = async (files: FileList | File[]) => {
-    if (files && files.length > 0) {
-      setUploading(true);
-      setUploadProgress(0);
-      const totalFiles = files.length;
-      
-      try {
-        for (let i = 0; i < totalFiles; i++) {
-          const file = files[i];
-          
-          if (file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            const dataUrl = await new Promise<string>((resolve, reject) => {
-              reader.onloadstart = () => {
-                setUploadProgress(Math.round((i / totalFiles) * 100));
-              };
-              reader.onprogress = (event) => {
-                if (event.lengthComputable) {
-                  const fileProgress = event.loaded / event.total;
-                  const overallProgress = Math.round(((i + fileProgress) / totalFiles) * 100);
-                  setUploadProgress(overallProgress);
-                }
-              };
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(file);
-            });
-
-            const thumb = await generateThumbnail(dataUrl);
-            setSelectedImages(prev => [...prev, { original: dataUrl, thumb }]);
-          } else {
-            if (file.size > MAX_TEXT_FILE_SIZE) {
-              alert(`File ${file.name} is too large. Max size is 1MB.`);
-              continue;
-            }
-            const reader = new FileReader();
-            const content = await new Promise<string>((resolve, reject) => {
-              reader.onloadstart = () => {
-                setUploadProgress(Math.round((i / totalFiles) * 100));
-              };
-              reader.onprogress = (event) => {
-                if (event.lengthComputable) {
-                  const fileProgress = event.loaded / event.total;
-                  const overallProgress = Math.round(((i + fileProgress) / totalFiles) * 100);
-                  setUploadProgress(overallProgress);
-                }
-              };
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsText(file);
-            });
-            
-            if (content.length > MAX_TEXT_FILE_CHARS) {
-              alert(`File ${file.name} has too many characters. Max is ${MAX_TEXT_FILE_CHARS}.`);
-              continue;
-            }
-            setSelectedFiles(prev => [...prev, { name: file.name, content, size: file.size }]);
-          }
-          setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
-        }
-      } catch (error) {
-        console.error("Error processing files:", error);
-        alert("An error occurred while processing the files. Please try again.");
-      } finally {
-        setUploading(false);
-      }
-    }
-  };
-
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      await processFiles(e.target.files);
+      await onProcessFiles(e.target.files);
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleTextFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      await processFiles(e.target.files);
+      await onProcessFiles(e.target.files);
     }
     if (textFileInputRef.current) textFileInputRef.current.value = "";
   };
@@ -200,14 +112,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, disabled }) => {
     }
     if (files.length > 0) {
       e.preventDefault();
-      await processFiles(files);
+      await onProcessFiles(files);
     }
   };
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      await processFiles(e.dataTransfer.files);
+      await onProcessFiles(e.dataTransfer.files);
     }
   };
 

@@ -8,12 +8,13 @@ import React, { useState, useRef, useEffect } from "react";
 import { sendMessageStream } from "../services/gemini";
 import { ChatMessageItem } from "./ChatMessageItem";
 import { ChatInput } from "./ChatInput";
+import { ImageEditor } from "./ImageEditor";
+import { checkAccessibility } from "../utils/accessibility";
 import { Sparkles, Lightbulb, ArrowLeft, Download, Trash2, Loader2, ImageOff, Search, Square, AlertCircle, Image as ImageIcon, Menu, X as CloseIcon, FileText, Layout, Code, Palette, Key } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Part, Content } from "@google/genai";
 import { ChatMessage, ExamplePrompt } from "../types";
 import { ConfirmationModal } from "./ConfirmationModal";
-import { DEFAULT_GEMINI_API_KEY, getSyncedGeminiKey, setSyncedGeminiKey } from "../utils/apiKey";
 
 const DEFAULT_EXAMPLES: ExamplePrompt[] = [
   {
@@ -365,9 +366,128 @@ export const ChatInterface: React.FC = () => {
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [tempKey, setTempKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("gemini-3.1-pro-preview");
-  const [selectedMode] = useState<'html'>('html');
+  const [selectedMode, setSelectedMode] = useState<'nextjs' | 'html' | 'json' | 'txt'>('html');
+  const [selectedImages, setSelectedImages] = useState<{ original: string, thumb: string }[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<{ name: string, content: string, size: number }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [editingImage, setEditingImage] = useState<string | null>(null);
+  const [savedComponents, setSavedComponents] = useState<{ id: string, code: string, language: string, timestamp: number }[]>(() => {
+    try {
+      const saved = localStorage.getItem('gemini_saved_components');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const MAX_TEXT_FILE_SIZE = 1 * 1024 * 1024; // 1MB
+  const MAX_TEXT_FILE_CHARS = 100000;
+
+  const generateThumbnail = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 200;
+        const MAX_HEIGHT = 200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = () => reject(new Error("Failed to load image for thumbnail generation"));
+      img.src = dataUrl;
+    });
+  };
+
+  const handleProcessFiles = async (files: FileList | File[]) => {
+    if (files && files.length > 0) {
+      setUploading(true);
+      setUploadProgress(0);
+      const totalFiles = files.length;
+      
+      try {
+        for (let i = 0; i < totalFiles; i++) {
+          const file = files[i];
+          
+          if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              reader.onloadstart = () => {
+                setUploadProgress(Math.round((i / totalFiles) * 100));
+              };
+              reader.onprogress = (event) => {
+                if (event.lengthComputable) {
+                  const fileProgress = event.loaded / event.total;
+                  const overallProgress = Math.round(((i + fileProgress) / totalFiles) * 100);
+                  setUploadProgress(overallProgress);
+                }
+              };
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+
+            // Instead of adding directly, open editor
+            setEditingImage(dataUrl);
+            // We stop processing other files for now to focus on editing
+            break;
+          } else {
+            if (file.size > MAX_TEXT_FILE_SIZE) {
+              alert(`File ${file.name} is too large. Max size is 1MB.`);
+              continue;
+            }
+            const reader = new FileReader();
+            const content = await new Promise<string>((resolve, reject) => {
+              reader.onloadstart = () => {
+                setUploadProgress(Math.round((i / totalFiles) * 100));
+              };
+              reader.onprogress = (event) => {
+                if (event.lengthComputable) {
+                  const fileProgress = event.loaded / event.total;
+                  const overallProgress = Math.round(((i + fileProgress) / totalFiles) * 100);
+                  setUploadProgress(overallProgress);
+                }
+              };
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsText(file);
+            });
+            
+            if (content.length > MAX_TEXT_FILE_CHARS) {
+              alert(`File ${file.name} has too many characters. Max is ${MAX_TEXT_FILE_CHARS}.`);
+              continue;
+            }
+            setSelectedFiles(prev => [...prev, { name: file.name, content, size: file.size }]);
+          }
+          setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
+        }
+      } catch (error) {
+        console.error("Error processing files:", error);
+        alert("An error occurred while processing the files. Please try again.");
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -388,19 +508,6 @@ export const ChatInterface: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('gemini_chat_history', JSON.stringify(messages));
   }, [messages]);
-
-  useEffect(() => {
-    const synced = getSyncedGeminiKey();
-    setSyncedGeminiKey(synced);
-
-    const handleKeyUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<string>;
-      setTempKey(customEvent.detail || DEFAULT_GEMINI_API_KEY);
-    };
-
-    window.addEventListener("gemini-key-updated", handleKeyUpdated as EventListener);
-    return () => window.removeEventListener("gemini-key-updated", handleKeyUpdated as EventListener);
-  }, []);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -483,13 +590,6 @@ export const ChatInterface: React.FC = () => {
   const handleSendMessage = async (text: string, images?: string[], files?: { name: string, content: string }[]) => {
     setIsLoading(true);
     setIsSidebarOpen(false); // Close sidebar on send
-
-    const modeInstruction = selectedMode === 'tsx'
-      ? "Output mode: TSX React component only. Use Tailwind utility classes for all styling."
-      : "Output mode: Raw HTML only. Use Tailwind utility classes for all styling.";
-
-    const tw4Instruction = isTw4GodMode ? `\n${GLOBAL_TW4_USER_MODE_HINT}` : "";
-    const enrichedText = `${text.trim()}\n\n${modeInstruction}${tw4Instruction}`;
     
     // Auto-generate placeholder image if none provided and it's a design request
     let finalImages = images || [];
@@ -519,7 +619,7 @@ export const ChatInterface: React.FC = () => {
     // Construct user message parts
     const userParts: Part[] = [];
     if (text) {
-      userParts.push({ text: enrichedText });
+      userParts.push({ text });
     }
     if (files && files.length > 0) {
       files.forEach(file => {
@@ -576,8 +676,7 @@ export const ChatInterface: React.FC = () => {
       });
 
       abortControllerRef.current = new AbortController();
-      const apiOutputMode = selectedMode === 'tsx' ? 'tsx' : 'html';
-      const streamResult = await sendMessageStream(enrichedText, history, finalImages, apiOutputMode, files, selectedModel);
+      const streamResult = await sendMessageStream(text, history, finalImages, selectedMode, files, selectedModel);
 
       // Create a placeholder for the model response
       const modelMessageId = (Date.now() + 1).toString();
@@ -598,7 +697,21 @@ export const ChatInterface: React.FC = () => {
         }
 
         const { value: chunk, done } = await iterator.next();
-        if (done) break;
+        if (done) {
+          // Run accessibility check on the final message
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg.id === modelMessageId) {
+              const fullText = lastMsg.parts.map(p => p.text || '').join('');
+              if (fullText.includes('className=') || fullText.includes('class=')) {
+                const report = checkAccessibility(fullText);
+                return [...prev.slice(0, -1), { ...lastMsg, accessibilityReport: report }];
+              }
+            }
+            return prev;
+          });
+          break;
+        }
 
         const newParts = chunk.candidates?.[0]?.content?.parts || [];
         
@@ -677,12 +790,15 @@ export const ChatInterface: React.FC = () => {
       let actionText = "Try rephrasing your request or checking your connection.";
       const errorMsg = error.message || "";
       
+      let errorType: 'key' | 'quota' | 'other' = 'other';
       if (errorMsg.includes("QUOTA") || errorMsg.includes("quota")) {
         friendlyMessage = "You've reached your Gemini API quota limit.";
         actionText = "Please wait a few minutes or check your billing settings in Google Cloud.";
+        errorType = 'quota';
       } else if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("key")) {
         friendlyMessage = "Your API key seems invalid.";
         actionText = "Please click the key icon or refresh to re-enter your Gemini API key.";
+        errorType = 'key';
       } else if (errorMsg.includes("SAFETY") || errorMsg.includes("blocked")) {
         friendlyMessage = "Your request was blocked by safety filters.";
         actionText = "Try rephrasing your prompt to be more neutral or removing sensitive content.";
@@ -698,6 +814,8 @@ export const ChatInterface: React.FC = () => {
           text: `### ⚠️ ${friendlyMessage}\n\n${actionText}\n\n---\n*Technical Details: ${errorMsg}*` 
         }],
         timestamp: Date.now(),
+        isError: true,
+        errorType,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -711,6 +829,26 @@ export const ChatInterface: React.FC = () => {
     setIsLoading(false);
   };
 
+  const [activeTab, setActiveTab] = useState<'templates' | 'history'>('templates');
+
+  const handleSaveComponent = (code: string, language: string) => {
+    const newComponent = {
+      id: Date.now().toString(),
+      code,
+      language,
+      timestamp: Date.now()
+    };
+    const updated = [newComponent, ...savedComponents];
+    setSavedComponents(updated);
+    localStorage.setItem('gemini_saved_components', JSON.stringify(updated));
+  };
+
+  const handleDeleteSavedComponent = (id: string) => {
+    const updated = savedComponents.filter(c => c.id !== id);
+    setSavedComponents(updated);
+    localStorage.setItem('gemini_saved_components', JSON.stringify(updated));
+  };
+
   const handleClearChat = () => {
     setMessages([]);
     localStorage.removeItem('gemini_chat_history');
@@ -720,7 +858,7 @@ export const ChatInterface: React.FC = () => {
 
   const handleSaveKey = () => {
     if (tempKey.trim()) {
-      setSyncedGeminiKey(tempKey.trim());
+      localStorage.setItem('custom_gemini_api_key', tempKey.trim());
       setIsKeyModalOpen(false);
       setTempKey("");
       alert("API Key updated successfully!");
@@ -730,6 +868,16 @@ export const ChatInterface: React.FC = () => {
   const filteredExamples = examples.filter(ex => 
     ex.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     ex.prompt.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const visionExamples = filteredExamples.filter(ex => 
+    ex.title.toLowerCase().includes("tailwind") || 
+    ex.prompt.toLowerCase().includes("tailwind")
+  );
+  
+  const otherExamples = filteredExamples.filter(ex => 
+    !ex.title.toLowerCase().includes("tailwind") && 
+    !ex.prompt.toLowerCase().includes("tailwind")
   );
 
   return (
@@ -752,47 +900,126 @@ export const ChatInterface: React.FC = () => {
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="fixed inset-y-0 left-0 w-[85%] md:w-80 bg-white z-50 shadow-2xl flex flex-col border-r border-gray-200"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-                    <Sparkles size={18} />
+              <div className="p-6 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+                      <Sparkles size={18} />
+                    </div>
+                    <h2 className="font-bold text-lg">Library</h2>
                   </div>
-                  <h2 className="font-bold text-lg">Templates</h2>
+                  <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <CloseIcon size={20} className="text-gray-400" />
+                  </button>
                 </div>
-                <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                  <CloseIcon size={20} className="text-gray-400" />
-                </button>
+
+                <div className="flex p-1 bg-gray-100 rounded-xl border border-gray-200">
+                  <button 
+                    onClick={() => setActiveTab('templates')}
+                    className={`flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'templates' ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                  >
+                    Templates
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('history')}
+                    className={`flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'history' ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                  >
+                    History ({savedComponents.length})
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                <div className="relative mb-6">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                  <input 
-                    type="text"
-                    placeholder="Search templates..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
-                  />
-                </div>
-
-                <div className="space-y-6">
-                  <section>
-                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 px-2">Popular Designs</h3>
-                    <div className="grid grid-cols-1 gap-3">
-                      {filteredExamples.map((example, index) => (
-                        <ExampleCard 
-                          key={`sidebar-${index}`} 
-                          example={example} 
-                          onClick={() => {
-                            handleExampleClick(example);
-                            setIsSidebarOpen(false);
-                          }} 
-                        />
-                      ))}
+                {activeTab === 'templates' ? (
+                  <>
+                    <div className="relative mb-6">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                      <input 
+                        type="text"
+                        placeholder="Search templates..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm"
+                      />
                     </div>
-                  </section>
-                </div>
+
+                    <div className="space-y-6">
+                      <section>
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 px-2">Popular Designs</h3>
+                        <div className="grid grid-cols-1 gap-3">
+                          {filteredExamples.map((example, index) => (
+                            <ExampleCard 
+                              key={`sidebar-${index}`} 
+                              example={example} 
+                              onClick={() => {
+                                handleExampleClick(example);
+                                setIsSidebarOpen(false);
+                              }} 
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    {savedComponents.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                        <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-300 mb-4">
+                          <FileText size={24} />
+                        </div>
+                        <p className="text-xs font-medium text-gray-400">No saved components yet.</p>
+                      </div>
+                    ) : (
+                      savedComponents.map((comp) => (
+                        <div key={comp.id} className="group p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                                <Code size={14} />
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">
+                                  {comp.language}
+                                </span>
+                                <span className="text-[9px] text-gray-300">
+                                  {new Date(comp.timestamp).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => handleDeleteSavedComponent(comp.id)}
+                              className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => {
+                                handleSendMessage(`Reuse this component:\n\n\`\`\`${comp.language}\n${comp.code}\n\`\`\``);
+                                setIsSidebarOpen(false);
+                              }}
+                              className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-blue-700 transition-all active:scale-95"
+                            >
+                              Reuse
+                            </button>
+                            <button 
+                              onClick={() => {
+                                navigator.clipboard.writeText(comp.code);
+                                alert("Code copied to clipboard!");
+                              }}
+                              className="px-3 py-2 bg-gray-50 text-gray-600 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-gray-100 transition-all active:scale-95"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
               
               <div className="p-4 border-t border-gray-100">
@@ -806,8 +1033,7 @@ export const ChatInterface: React.FC = () => {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-3 md:px-6 py-3 md:py-4 sticky top-0 z-30 shadow-sm transition-all space-y-3">
-        <div className="flex items-center gap-2">
+      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-4 md:px-6 py-3 md:py-4 flex items-center gap-3 sticky top-0 z-30 shadow-sm transition-all">
         <button 
           onClick={() => setIsSidebarOpen(true)}
           className="p-2 hover:bg-gray-100 rounded-lg transition-all active:scale-95"
@@ -851,25 +1077,22 @@ export const ChatInterface: React.FC = () => {
           </div>
 
           <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-            <span className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-white text-blue-600 shadow-sm">Tailwind HTML</span>
+            {(['html', 'nextjs', 'json', 'txt'] as const).map((mode) => (
+              <button 
+                key={mode}
+                onClick={() => setSelectedMode(mode)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === mode ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+              >
+                {mode}
+              </button>
+            ))}
           </div>
-
-          <button
-            onClick={() => setIsTw4GodMode(prev => !prev)}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all ${isTw4GodMode ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-            title="Toggle GLOBAL TW4 GOD mode"
-          >
-            TW4 GOD {isTw4GodMode ? 'ON' : 'OFF'}
-          </button>
         </div>
 
         <div className="flex-1"></div>
 
         <button 
-          onClick={() => {
-            setTempKey(getSyncedGeminiKey());
-            setIsKeyModalOpen(true);
-          }}
+          onClick={() => setIsKeyModalOpen(true)}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors active:scale-95 text-gray-600"
           title="Update API Key"
         >
@@ -894,27 +1117,6 @@ export const ChatInterface: React.FC = () => {
             </button>
           </div>
         )}
-        </div>
-
-        <div className="flex lg:hidden items-center justify-between gap-2">
-          <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full">
-            <button 
-              onClick={() => setSelectedModel("gemini-3.1-pro-preview")}
-              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedModel === "gemini-3.1-pro-preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              Pro 3.1
-            </button>
-            <button 
-              onClick={() => setSelectedModel("gemini-3-flash-preview")}
-              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedModel === "gemini-3-flash-preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              Flash 3
-            </button>
-          </div>
-          <div className="px-3 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[10px] font-bold uppercase tracking-wider text-blue-700 whitespace-nowrap">
-            HTML
-          </div>
-        </div>
       </header>
 
       {/* Clear Chat Modal */}
@@ -986,6 +1188,8 @@ export const ChatInterface: React.FC = () => {
                 key={msg.id} 
                 message={msg} 
                 isStreaming={isLoading && index === messages.length - 1}
+                onUpdateKey={() => setIsKeyModalOpen(true)}
+                onSaveComponent={handleSaveComponent}
               />
             ))
           )}
@@ -1016,13 +1220,20 @@ export const ChatInterface: React.FC = () => {
           </AnimatePresence>
 
           <div className="flex flex-col gap-3">
-            <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+            <ChatInput 
+              onSend={handleSendMessage} 
+              disabled={isLoading}
+              selectedImages={selectedImages}
+              setSelectedImages={setSelectedImages}
+              selectedFiles={selectedFiles}
+              setSelectedFiles={setSelectedFiles}
+              uploading={uploading}
+              uploadProgress={uploadProgress}
+              onProcessFiles={handleProcessFiles}
+            />
             
             <p className="text-[10px] text-center text-gray-400 font-medium">
               Powered by Gemini 3.1 Pro • Pixel-perfect Tailwind Generation
-            </p>
-            <p className="text-[10px] text-center text-violet-500 font-semibold">
-              GLOBAL TW4 GOD MODE: {isTw4GodMode ? 'ENABLED' : 'DISABLED'}
             </p>
           </div>
         </div>
@@ -1069,12 +1280,6 @@ export const ChatInterface: React.FC = () => {
                   placeholder="Paste your API key here..."
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
-                <button
-                  onClick={() => setTempKey(DEFAULT_GEMINI_API_KEY)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-dashed border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors"
-                >
-                  Use synced default Gemini key
-                </button>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setIsKeyModalOpen(false)}
@@ -1106,6 +1311,20 @@ export const ChatInterface: React.FC = () => {
         title="Clear Conversation"
         message="Are you sure you want to delete all messages? This action cannot be undone."
       />
+
+      <AnimatePresence>
+        {editingImage && (
+          <ImageEditor
+            image={editingImage}
+            onConfirm={async (croppedImage) => {
+              const thumb = await generateThumbnail(croppedImage);
+              setSelectedImages(prev => [...prev, { original: croppedImage, thumb }]);
+              setEditingImage(null);
+            }}
+            onCancel={() => setEditingImage(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

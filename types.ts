@@ -4,11 +4,26 @@
 */
 import { Part } from "@google/genai";
 
+export interface AccessibilityIssue {
+  type: 'error' | 'warning' | 'info';
+  message: string;
+  suggestion: string;
+  element?: string;
+}
+
+export interface AccessibilityReport {
+  score: number;
+  issues: AccessibilityIssue[];
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "model";
   parts: Part[];
   timestamp: number;
+  isError?: boolean;
+  errorType?: 'key' | 'quota' | 'other';
+  accessibilityReport?: AccessibilityReport;
 }
 
 export interface ExamplePrompt {

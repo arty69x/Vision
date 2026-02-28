@@ -8,7 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChatMessage } from "../types";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, User, Terminal, Code2, ChevronRight, Brain, Copy, Check, Download, Save, Eye, EyeOff, Loader2, ExternalLink } from "lucide-react";
+import { Bot, User, Terminal, Code2, ChevronRight, Brain, Copy, Check, Download, Save, Eye, EyeOff, Loader2, ExternalLink, Key, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Part } from "@google/genai";
 import { LivePreview } from "./LivePreview";
 import { generatePreviewHtml } from "../utils/preview";
@@ -17,10 +17,14 @@ import type { Components } from 'react-markdown';
 interface ChatMessageProps {
   message: ChatMessage;
   isStreaming?: boolean;
+  onUpdateKey?: () => void;
+  onSaveComponent?: (code: string, language: string) => void;
 }
 
-const CodeBlock = ({ code, language, isTailwind, isStreaming }: { code: string, language: string, isTailwind: boolean, isStreaming?: boolean }) => {
+const CodeBlock = ({ code, language, isTailwind, isStreaming, onSaveComponent }: { code: string, language: string, isTailwind: boolean, isStreaming?: boolean, onSaveComponent?: (code: string, language: string) => void }) => {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [progress, setProgress] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -100,6 +104,23 @@ const CodeBlock = ({ code, language, isTailwind, isStreaming }: { code: string, 
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           {isTailwind && (
+            <div className="flex bg-gray-800 rounded-md p-1 gap-1">
+              <button 
+                onClick={() => setShowPreview(false)}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${!showPreview ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              >
+                CODE
+              </button>
+              <button 
+                onClick={() => setShowPreview(true)}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${showPreview ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              >
+                PREVIEW
+              </button>
+            </div>
+          )}
+
+          {isTailwind && (
             <button 
               onClick={() => {
                 const html = generatePreviewHtml(code, language);
@@ -107,11 +128,10 @@ const CodeBlock = ({ code, language, isTailwind, isStreaming }: { code: string, 
                 const url = URL.createObjectURL(blob);
                 window.open(url, '_blank');
               }}
-              className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5 px-3"
+              className="p-1.5 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600 transition-colors flex items-center gap-1.5 px-2"
               title="Open Live Preview in New Tab"
             >
               <ExternalLink size={14} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Preview UI</span>
             </button>
           )}
           <button 
@@ -122,6 +142,22 @@ const CodeBlock = ({ code, language, isTailwind, isStreaming }: { code: string, 
             {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
             <span className="text-[10px] font-medium hidden sm:inline">{copied ? "Copied!" : "Copy Code"}</span>
           </button>
+          
+          {onSaveComponent && !isStreaming && (
+            <button 
+              onClick={() => {
+                onSaveComponent(code, language);
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+              }}
+              className={`p-1.5 rounded-md transition-colors flex items-center gap-1.5 px-2 ${saved ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              title="Save to History"
+            >
+              {saved ? <Check size={14} /> : <Save size={14} />}
+              <span className="text-[10px] font-medium hidden sm:inline">{saved ? "Saved!" : "Save"}</span>
+            </button>
+          )}
+
           <div className="flex bg-gray-800 rounded-md p-1 gap-1">
             <button 
               onClick={() => handleDownload('jsx')}
@@ -159,25 +195,29 @@ const CodeBlock = ({ code, language, isTailwind, isStreaming }: { code: string, 
         </div>
       </div>
       <div className="p-0">
-        <div className="p-4 overflow-x-auto relative">
-          {isStreaming && !code ? (
-            <div className="flex flex-col items-center justify-center gap-4 py-12 bg-gray-900/20 rounded-lg border border-dashed border-gray-700/50">
-              <div className="relative">
-                <Loader2 size={28} className="animate-spin text-blue-500" />
+        {showPreview && isTailwind ? (
+          <LivePreview code={code} language={language} />
+        ) : (
+          <div className="p-4 overflow-x-auto relative">
+            {isStreaming && !code ? (
+              <div className="flex flex-col items-center justify-center gap-4 py-12 bg-gray-900/20 rounded-lg border border-dashed border-gray-700/50">
+                <div className="relative">
+                  <Loader2 size={28} className="animate-spin text-blue-500" />
+                </div>
+                <div className="flex flex-col items-center gap-1.5 text-center px-6">
+                  <span className="text-sm font-semibold text-gray-200">Generating Code...</span>
+                  <p className="text-[10px] text-gray-500 max-w-[240px] leading-relaxed">
+                    The model is crafting your UI.
+                  </p>
+                </div>
               </div>
-              <div className="flex flex-col items-center gap-1.5 text-center px-6">
-                <span className="text-sm font-semibold text-gray-200">Generating Code...</span>
-                <p className="text-[10px] text-gray-500 max-w-[240px] leading-relaxed">
-                  The model is crafting your UI.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <pre className="text-xs text-white font-mono m-0">
-              <code>{code}</code>
-            </pre>
-          )}
-        </div>
+            ) : (
+              <pre className="text-xs text-white font-mono m-0">
+                <code>{code}</code>
+              </pre>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -351,7 +391,7 @@ const CollapsiblePart: React.FC<CollapsiblePartProps> = ({
   );
 };
 
-export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreaming }) => {
+export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreaming, onUpdateKey, onSaveComponent }) => {
   const isUser = message.role === "user";
 
   const renderPart = (part: Part, index: number) => {
@@ -401,7 +441,6 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
     if (part.executableCode) {
       const code = part.executableCode.code;
       const [copied, setCopied] = useState(false);
-      const [activeView, setActiveView] = useState<'code' | 'preview'>('code');
 
       const handleCopy = () => {
         navigator.clipboard.writeText(code);
@@ -429,7 +468,6 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
       };
 
       const isTailwind = code.includes('className=') || code.includes('class=');
-      const previewLanguage = (part.executableCode.language || '').toLowerCase().includes('html') ? 'html' : 'tsx';
 
       return (
         <CollapsiblePart
@@ -441,24 +479,14 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
         >
           <div className="absolute right-2 top-2 flex gap-2 opacity-100 md:opacity-0 md:group-hover/code:opacity-100 transition-opacity z-10">
             {isTailwind && (
-              <>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setActiveView(activeView === 'code' ? 'preview' : 'code'); }}
-                  className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-1.5 px-3"
-                  title="Toggle in-chat preview"
-                >
-                  {activeView === 'preview' ? <EyeOff size={14} /> : <Eye size={14} />}
-                  <span className="text-[10px] font-bold uppercase tracking-wider">{activeView === 'preview' ? 'Code' : 'Preview'}</span>
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handlePreview(); }}
-                  className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5 px-3"
-                  title="Open Live Preview in New Tab"
-                >
-                  <ExternalLink size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">New Tab</span>
-                </button>
-              </>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handlePreview(); }}
+                className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5 px-3"
+                title="Open Live Preview in New Tab"
+              >
+                <ExternalLink size={14} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Preview UI</span>
+              </button>
             )}
             <button 
               onClick={(e) => { e.stopPropagation(); handleCopy(); }}
@@ -478,11 +506,8 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
             </button>
           </div>
           <div className="p-3">
-            {activeView === 'preview' && isTailwind ? (
-              <LivePreview code={code} language={previewLanguage} />
-            ) : (
-              <div className="overflow-x-auto">
-                {isStreaming && !code ? (
+            <div className="overflow-x-auto">
+              {isStreaming && !code ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-8 bg-gray-900/50 rounded-lg border border-dashed border-gray-700/50">
                   <Loader2 size={24} className="animate-spin text-blue-500" />
                   <div className="flex flex-col items-center">
@@ -494,9 +519,8 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
                 <pre className="text-xs text-white font-mono">
                   <code>{code}</code>
                 </pre>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </CollapsiblePart>
       );
@@ -548,7 +572,15 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
           const isBlock = match || codeString.includes('\n');
 
           if (isBlock) {
-            return <CodeBlock code={codeString} language={language || 'text'} isTailwind={isTailwind} isStreaming={isStreaming} />;
+            return (
+              <CodeBlock 
+                code={codeString} 
+                language={language || 'text'} 
+                isTailwind={isTailwind} 
+                isStreaming={isStreaming} 
+                onSaveComponent={onSaveComponent}
+              />
+            );
           }
           return <code {...rest} className="bg-gray-100 text-pink-600 px-1 py-0.5 rounded text-xs font-mono">{children}</code>;
         }
@@ -604,6 +636,59 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
           }`}
         >
           {message.parts.map((part, i) => renderPart(part, i))}
+          {message.isError && message.errorType === 'key' && onUpdateKey && (
+            <button
+              onClick={onUpdateKey}
+              className="mt-3 flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-xs font-bold transition-all active:scale-95"
+            >
+              <Key size={14} />
+              Update API Key
+            </button>
+          )}
+          
+          {message.accessibilityReport && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${message.accessibilityReport.score >= 90 ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Accessibility Score</span>
+                    <span className={`text-sm font-bold ${message.accessibilityReport.score >= 90 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                      {message.accessibilityReport.score}/100
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {message.accessibilityReport.issues.length > 0 ? (
+                <div className="space-y-2">
+                  {message.accessibilityReport.issues.map((issue, idx) => (
+                    <div key={idx} className={`p-3 rounded-xl border ${issue.type === 'error' ? 'bg-red-50 border-red-100 text-red-800' : issue.type === 'warning' ? 'bg-orange-50 border-orange-100 text-orange-800' : 'bg-blue-50 border-blue-100 text-blue-800'}`}>
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-bold">{issue.message}</span>
+                          <p className="text-[10px] opacity-80 leading-relaxed">{issue.suggestion}</p>
+                          {issue.element && (
+                            <code className="text-[9px] bg-black/5 p-1 rounded mt-1 font-mono break-all">
+                              {issue.element}
+                            </code>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 flex items-center gap-2">
+                  <Check size={14} />
+                  <span className="text-xs font-bold">No accessibility issues detected!</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <span className="text-xs text-gray-400 px-1">
           {new Date(message.timestamp).toLocaleTimeString([], {
