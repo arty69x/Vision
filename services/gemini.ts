@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
+import { DEFAULT_GEMINI_API_KEY } from "../utils/apiKey";
 
 export const sendMessageStream = async (
   message: string,
@@ -12,7 +13,7 @@ export const sendMessageStream = async (
   files?: { name: string, content: string }[],
   model: string = "gemini-3.1-pro-preview"
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || DEFAULT_GEMINI_API_KEY });
   const formatInstructions = {
     nextjs: "Output a single, reusable Next.js (React) functional component using Tailwind CSS. Include all necessary sub-components within the same block.",
     html: "Output raw HTML with Tailwind CSS utility classes. Do not include React boilerplate.",
