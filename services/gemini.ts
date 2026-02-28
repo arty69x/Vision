@@ -4,7 +4,6 @@
 */
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
 import { DEFAULT_GEMINI_API_KEY } from "../utils/apiKey";
-import { GLOBAL_TW4_SYSTEM_APPENDIX } from "../utils/globalTw4Master";
 
 export const sendMessageStream = async (
   message: string,

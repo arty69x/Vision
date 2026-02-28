@@ -16,6 +16,7 @@ export default function App() {
       const syncedKey = getSyncedGeminiKey();
       setSyncedGeminiKey(syncedKey);
       setHasKey(true);
+      setIsUsingCustomKey(true);
       setCustomKey(syncedKey);
 
       // @ts-ignore

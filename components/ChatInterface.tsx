@@ -14,7 +14,6 @@ import { Part, Content } from "@google/genai";
 import { ChatMessage, ExamplePrompt } from "../types";
 import { ConfirmationModal } from "./ConfirmationModal";
 import { DEFAULT_GEMINI_API_KEY, getSyncedGeminiKey, setSyncedGeminiKey } from "../utils/apiKey";
-import { GLOBAL_TW4_USER_MODE_HINT } from "../utils/globalTw4Master";
 
 const DEFAULT_EXAMPLES: ExamplePrompt[] = [
   {
@@ -366,8 +365,7 @@ export const ChatInterface: React.FC = () => {
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [tempKey, setTempKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("gemini-3.1-pro-preview");
-  const [selectedMode, setSelectedMode] = useState<'html' | 'tsx'>('html');
-  const [isTw4GodMode, setIsTw4GodMode] = useState(true);
+  const [selectedMode] = useState<'html'>('html');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -853,18 +851,7 @@ export const ChatInterface: React.FC = () => {
           </div>
 
           <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-            <button
-              onClick={() => setSelectedMode('html')}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'html' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              HTML
-            </button>
-            <button
-              onClick={() => setSelectedMode('tsx')}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'tsx' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              TSX
-            </button>
+            <span className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-white text-blue-600 shadow-sm">Tailwind HTML</span>
           </div>
 
           <button
@@ -924,27 +911,9 @@ export const ChatInterface: React.FC = () => {
               Flash 3
             </button>
           </div>
-          <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-            <button
-              onClick={() => setSelectedMode('html')}
-              className={`px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'html' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              HTML
-            </button>
-            <button
-              onClick={() => setSelectedMode('tsx')}
-              className={`px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'tsx' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              TSX
-            </button>
+          <div className="px-3 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[10px] font-bold uppercase tracking-wider text-blue-700 whitespace-nowrap">
+            HTML
           </div>
-          <button
-            onClick={() => setIsTw4GodMode(prev => !prev)}
-            className={`px-2 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap ${isTw4GodMode ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200'}`}
-            title="Toggle GLOBAL TW4 GOD mode"
-          >
-            TW4 {isTw4GodMode ? 'ON' : 'OFF'}
-          </button>
         </div>
       </header>
 
@@ -1101,7 +1070,6 @@ export const ChatInterface: React.FC = () => {
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
                 <button
-                  type="button"
                   onClick={() => setTempKey(DEFAULT_GEMINI_API_KEY)}
                   className="w-full px-4 py-2.5 rounded-xl border border-dashed border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors"
                 >
