@@ -41,6 +41,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const textFileInputRef = useRef<HTMLInputElement>(null);
 
   const MODIFIERS = [
+    { id: '--tailwind', label: 'Force Tailwind' },
     { id: '--dark', label: 'Dark Mode' },
     { id: '--glass', label: 'Glassmorphism' },
     { id: '--brutalist', label: 'Brutalist' },

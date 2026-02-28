@@ -34,6 +34,7 @@ export const sendMessageStream = async (
     neumorphic: message.includes('--neumorphic'),
     vue: message.includes('--vue'),
     html: message.includes('--html'),
+    tailwind: message.includes('--tailwind'),
   };
 
   let dynamicInstructions = "";
@@ -45,6 +46,7 @@ export const sendMessageStream = async (
   if (flags.neon) dynamicInstructions += "\n- **CRITICAL**: Force NEON/CYBERPUNK styling. Use dark backgrounds (bg-black) with bright neon accents (text-cyan-400, border-pink-500) and glowing shadows (shadow-[0_0_15px_rgba(0,255,255,0.5)]).";
   if (flags.material) dynamicInstructions += "\n- **CRITICAL**: Force MATERIAL DESIGN styling. Use depth (shadows), vibrant colors, and standard material layout patterns.";
   if (flags.neumorphic) dynamicInstructions += "\n- **CRITICAL**: Force NEUMORPHISM styling. Use soft shadows (light and dark) to create a 'soft UI' look where elements appear to be extruded from the background.";
+  if (flags.tailwind) dynamicInstructions += "\n- **CRITICAL**: Force Tailwind output. Return only UI code that uses Tailwind utility classes for styling and avoid non-Tailwind CSS approaches.";
   
   if (flags.vue) {
     formatInstructions.nextjs = "Output a single, reusable Vue 3 Single File Component (<template>, <script setup>, <style>) using Tailwind CSS.";
@@ -88,9 +90,11 @@ If the user asks a general question not related to generating UI code, answer th
     },
   });
 
+  const normalizedMessage = message.replace(/--(tailwind|dark|glass|brutalist|retro|minimal|neon|material|neumorphic|vue|html)\b/g, '').replace(/\s{2,}/g, ' ').trim();
+
   const parts: Part[] = [];
-  if (message) {
-    parts.push({ text: message });
+  if (normalizedMessage) {
+    parts.push({ text: normalizedMessage });
   }
   if (files && files.length > 0) {
     files.forEach(file => {
