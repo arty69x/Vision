@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Part, Content } from "@google/genai";
 import { ChatMessage, ExamplePrompt } from "../types";
 import { ConfirmationModal } from "./ConfirmationModal";
+import { DEFAULT_GEMINI_API_KEY, getSyncedGeminiKey, setSyncedGeminiKey } from "../utils/apiKey";
 
 const DEFAULT_EXAMPLES: ExamplePrompt[] = [
   {
@@ -364,7 +365,7 @@ export const ChatInterface: React.FC = () => {
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [tempKey, setTempKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("gemini-3.1-pro-preview");
-  const [selectedMode, setSelectedMode] = useState<'nextjs' | 'html' | 'json' | 'txt'>('html');
+  const [selectedMode] = useState<'html'>('html');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -387,6 +388,19 @@ export const ChatInterface: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('gemini_chat_history', JSON.stringify(messages));
   }, [messages]);
+
+  useEffect(() => {
+    const synced = getSyncedGeminiKey();
+    setSyncedGeminiKey(synced);
+
+    const handleKeyUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      setTempKey(customEvent.detail || DEFAULT_GEMINI_API_KEY);
+    };
+
+    window.addEventListener("gemini-key-updated", handleKeyUpdated as EventListener);
+    return () => window.removeEventListener("gemini-key-updated", handleKeyUpdated as EventListener);
+  }, []);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -698,8 +712,7 @@ export const ChatInterface: React.FC = () => {
 
   const handleSaveKey = () => {
     if (tempKey.trim()) {
-      localStorage.setItem('custom_gemini_api_key', tempKey.trim());
-      process.env.API_KEY = tempKey.trim();
+      setSyncedGeminiKey(tempKey.trim());
       setIsKeyModalOpen(false);
       setTempKey("");
       alert("API Key updated successfully!");
@@ -795,7 +808,8 @@ export const ChatInterface: React.FC = () => {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-4 md:px-6 py-3 md:py-4 flex items-center gap-3 sticky top-0 z-30 shadow-sm transition-all">
+      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-3 md:px-6 py-3 md:py-4 sticky top-0 z-30 shadow-sm transition-all space-y-3">
+        <div className="flex items-center gap-2">
         <button 
           onClick={() => setIsSidebarOpen(true)}
           className="p-2 hover:bg-gray-100 rounded-lg transition-all active:scale-95"
@@ -839,22 +853,17 @@ export const ChatInterface: React.FC = () => {
           </div>
 
           <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-            {(['html', 'nextjs', 'json', 'txt'] as const).map((mode) => (
-              <button 
-                key={mode}
-                onClick={() => setSelectedMode(mode)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === mode ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                {mode}
-              </button>
-            ))}
+            <span className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-white text-blue-600 shadow-sm">Tailwind HTML</span>
           </div>
         </div>
 
         <div className="flex-1"></div>
 
         <button 
-          onClick={() => setIsKeyModalOpen(true)}
+          onClick={() => {
+            setTempKey(getSyncedGeminiKey());
+            setIsKeyModalOpen(true);
+          }}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors active:scale-95 text-gray-600"
           title="Update API Key"
         >
@@ -879,6 +888,27 @@ export const ChatInterface: React.FC = () => {
             </button>
           </div>
         )}
+        </div>
+
+        <div className="flex lg:hidden items-center justify-between gap-2">
+          <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full">
+            <button 
+              onClick={() => setSelectedModel("gemini-3.1-pro-preview")}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedModel === "gemini-3.1-pro-preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              Pro 3.1
+            </button>
+            <button 
+              onClick={() => setSelectedModel("gemini-3-flash-preview")}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedModel === "gemini-3-flash-preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              Flash 3
+            </button>
+          </div>
+          <div className="px-3 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[10px] font-bold uppercase tracking-wider text-blue-700 whitespace-nowrap">
+            HTML
+          </div>
+        </div>
       </header>
 
       {/* Clear Chat Modal */}
@@ -1030,6 +1060,12 @@ export const ChatInterface: React.FC = () => {
                   placeholder="Paste your API key here..."
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
+                <button
+                  onClick={() => setTempKey(DEFAULT_GEMINI_API_KEY)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-dashed border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  Use synced default Gemini key
+                </button>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setIsKeyModalOpen(false)}
