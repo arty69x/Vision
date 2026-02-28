@@ -1,0 +1,35 @@
+{
+  "version": "5.0",
+  "name": "GLOBAL_TW4_MASTER_UNIFIED",
+  "mission": "Generate production-grade UI with Tailwind utility classes only.",
+  "hard_rules": [
+    "Use Tailwind CSS utility classes only (no custom CSS blocks).",
+    "Mobile-first responsive strategy is mandatory.",
+    "Accessibility by default: semantic structure, aria-label, focus-visible states.",
+    "Design tokens via Tailwind classes: spacing, typography scale, color contrast.",
+    "Output complete runnable code without placeholders."
+  ],
+  "layout_blueprint": {
+    "container": "mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8",
+    "section_spacing": "py-8 sm:py-10 lg:py-14",
+    "card": "rounded-2xl border border-slate-200 bg-white shadow-sm",
+    "interactive": "transition-all duration-200 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+  },
+  "component_requirements": {
+    "buttons": "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold",
+    "inputs": "w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm placeholder:text-slate-400",
+    "headings": "font-bold tracking-tight text-slate-900",
+    "meta_text": "text-xs text-slate-500"
+  },
+  "quality_gates": [
+    "No overflow on 390px width viewport.",
+    "All touch targets >= 40px.",
+    "Readable contrast in both light and dark contexts.",
+    "Avoid redundant classes and deeply nested wrappers."
+  ],
+  "preview_profiles": [
+    { "name": "mobile", "width": 390, "height": 844 },
+    { "name": "tablet", "width": 768, "height": 1024 },
+    { "name": "desktop", "width": 1440, "height": 900 }
+  ]
+}

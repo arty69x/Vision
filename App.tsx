@@ -5,28 +5,24 @@
 import React, { useState, useEffect } from "react";
 import { ChatInterface } from "./components/ChatInterface";
 import { Loader2, Key, ExternalLink, ArrowRight } from "lucide-react";
+import { getSyncedGeminiKey, setSyncedGeminiKey } from "./utils/apiKey";
 
 export default function App() {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [customKey, setCustomKey] = useState("");
-  const [isUsingCustomKey, setIsUsingCustomKey] = useState(false);
 
   useEffect(() => {
     const checkKey = async () => {
-      // Check if user previously saved a custom key
-      const savedKey = localStorage.getItem('custom_gemini_api_key');
-      if (savedKey) {
-        process.env.API_KEY = savedKey;
-        setHasKey(true);
-        setIsUsingCustomKey(true);
-        return;
-      }
+      const syncedKey = getSyncedGeminiKey();
+      setSyncedGeminiKey(syncedKey);
+      setHasKey(true);
+      setCustomKey(syncedKey);
 
       // @ts-ignore
       if (window.aistudio && window.aistudio.hasSelectedApiKey) {
         // @ts-ignore
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected);
+        await window.aistudio.hasSelectedApiKey();
+        setHasKey(true);
       } else {
         // If not in AI studio environment, just proceed
         setHasKey(true);
@@ -48,10 +44,8 @@ export default function App() {
   const handleCustomKeySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (customKey.trim()) {
-      localStorage.setItem('custom_gemini_api_key', customKey.trim());
-      process.env.API_KEY = customKey.trim();
+      setSyncedGeminiKey(customKey.trim());
       setHasKey(true);
-      setIsUsingCustomKey(true);
     }
   };
 

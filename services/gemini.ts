@@ -3,18 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, Part, Content, ThinkingLevel } from "@google/genai";
+import { DEFAULT_GEMINI_API_KEY } from "../utils/apiKey";
+import { GLOBAL_TW4_SYSTEM_APPENDIX } from "../utils/globalTw4Master";
 
 export const sendMessageStream = async (
   message: string,
   history: Content[],
   images?: string[],
-  outputFormat: 'nextjs' | 'html' | 'json' | 'txt' = 'html',
+  outputFormat: 'nextjs' | 'tsx' | 'html' | 'json' | 'txt' = 'html',
   files?: { name: string, content: string }[],
   model: string = "gemini-3.1-pro-preview"
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || DEFAULT_GEMINI_API_KEY });
   const formatInstructions = {
     nextjs: "Output a single, reusable Next.js (React) functional component using Tailwind CSS. Include all necessary sub-components within the same block.",
+    tsx: "Output a single, reusable TSX React functional component using Tailwind CSS utility classes only.",
     html: "Output raw HTML with Tailwind CSS utility classes. Do not include React boilerplate.",
     json: "Output a structured JSON representation of the requested data or layout. Ensure it is valid JSON.",
     txt: "Output plain text. Do not use markdown code blocks unless specifically requested."
@@ -46,8 +49,10 @@ export const sendMessageStream = async (
   
   if (flags.vue) {
     formatInstructions.nextjs = "Output a single, reusable Vue 3 Single File Component (<template>, <script setup>, <style>) using Tailwind CSS.";
+    formatInstructions.tsx = formatInstructions.nextjs;
   } else if (flags.html) {
     formatInstructions.nextjs = formatInstructions.html;
+    formatInstructions.tsx = formatInstructions.html;
   }
 
   const chat = ai.chats.create({
@@ -74,8 +79,11 @@ Follow these strict rules for MAX MODE:
 11. NEVER TRUNCATE: NEVER use placeholders like \`// ... rest of the code\` or \`/* content goes here */\`. You MUST write the complete, fully working code.
 12. FORMAT: ${formatInstructions[outputFormat]}
 13. OUTPUT: Output ONLY the valid React JSX code block. Do not include markdown formatting outside the code block, explanations, or setup instructions. Start directly with the component code.
+14. ALWAYS TAILWIND: Every UI output must rely on Tailwind utility classes only.
 
 ${dynamicInstructions}
+
+${GLOBAL_TW4_SYSTEM_APPENDIX}
 
 If the user asks a general question not related to generating UI code, answer them normally and helpfully.`,
       tools: [{ codeExecution: {} }],

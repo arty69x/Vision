@@ -13,6 +13,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Part, Content } from "@google/genai";
 import { ChatMessage, ExamplePrompt } from "../types";
 import { ConfirmationModal } from "./ConfirmationModal";
+import { DEFAULT_GEMINI_API_KEY, getSyncedGeminiKey, setSyncedGeminiKey } from "../utils/apiKey";
+import { GLOBAL_TW4_USER_MODE_HINT } from "../utils/globalTw4Master";
 
 const DEFAULT_EXAMPLES: ExamplePrompt[] = [
   {
@@ -364,7 +366,8 @@ export const ChatInterface: React.FC = () => {
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [tempKey, setTempKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("gemini-3.1-pro-preview");
-  const [selectedMode, setSelectedMode] = useState<'nextjs' | 'html' | 'json' | 'txt'>('html');
+  const [selectedMode, setSelectedMode] = useState<'html' | 'tsx'>('html');
+  const [isTw4GodMode, setIsTw4GodMode] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -387,6 +390,19 @@ export const ChatInterface: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('gemini_chat_history', JSON.stringify(messages));
   }, [messages]);
+
+  useEffect(() => {
+    const synced = getSyncedGeminiKey();
+    setSyncedGeminiKey(synced);
+
+    const handleKeyUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      setTempKey(customEvent.detail || DEFAULT_GEMINI_API_KEY);
+    };
+
+    window.addEventListener("gemini-key-updated", handleKeyUpdated as EventListener);
+    return () => window.removeEventListener("gemini-key-updated", handleKeyUpdated as EventListener);
+  }, []);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -469,6 +485,13 @@ export const ChatInterface: React.FC = () => {
   const handleSendMessage = async (text: string, images?: string[], files?: { name: string, content: string }[]) => {
     setIsLoading(true);
     setIsSidebarOpen(false); // Close sidebar on send
+
+    const modeInstruction = selectedMode === 'tsx'
+      ? "Output mode: TSX React component only. Use Tailwind utility classes for all styling."
+      : "Output mode: Raw HTML only. Use Tailwind utility classes for all styling.";
+
+    const tw4Instruction = isTw4GodMode ? `\n${GLOBAL_TW4_USER_MODE_HINT}` : "";
+    const enrichedText = `${text.trim()}\n\n${modeInstruction}${tw4Instruction}`;
     
     // Auto-generate placeholder image if none provided and it's a design request
     let finalImages = images || [];
@@ -498,7 +521,7 @@ export const ChatInterface: React.FC = () => {
     // Construct user message parts
     const userParts: Part[] = [];
     if (text) {
-      userParts.push({ text });
+      userParts.push({ text: enrichedText });
     }
     if (files && files.length > 0) {
       files.forEach(file => {
@@ -555,7 +578,8 @@ export const ChatInterface: React.FC = () => {
       });
 
       abortControllerRef.current = new AbortController();
-      const streamResult = await sendMessageStream(text, history, finalImages, selectedMode, files, selectedModel);
+      const apiOutputMode = selectedMode === 'tsx' ? 'tsx' : 'html';
+      const streamResult = await sendMessageStream(enrichedText, history, finalImages, apiOutputMode, files, selectedModel);
 
       // Create a placeholder for the model response
       const modelMessageId = (Date.now() + 1).toString();
@@ -698,8 +722,7 @@ export const ChatInterface: React.FC = () => {
 
   const handleSaveKey = () => {
     if (tempKey.trim()) {
-      localStorage.setItem('custom_gemini_api_key', tempKey.trim());
-      process.env.API_KEY = tempKey.trim();
+      setSyncedGeminiKey(tempKey.trim());
       setIsKeyModalOpen(false);
       setTempKey("");
       alert("API Key updated successfully!");
@@ -709,16 +732,6 @@ export const ChatInterface: React.FC = () => {
   const filteredExamples = examples.filter(ex => 
     ex.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
     ex.prompt.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const visionExamples = filteredExamples.filter(ex => 
-    ex.title.toLowerCase().includes("tailwind") || 
-    ex.prompt.toLowerCase().includes("tailwind")
-  );
-  
-  const otherExamples = filteredExamples.filter(ex => 
-    !ex.title.toLowerCase().includes("tailwind") && 
-    !ex.prompt.toLowerCase().includes("tailwind")
   );
 
   return (
@@ -795,7 +808,8 @@ export const ChatInterface: React.FC = () => {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-4 md:px-6 py-3 md:py-4 flex items-center gap-3 sticky top-0 z-30 shadow-sm transition-all">
+      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-3 md:px-6 py-3 md:py-4 sticky top-0 z-30 shadow-sm transition-all space-y-3">
+        <div className="flex items-center gap-2">
         <button 
           onClick={() => setIsSidebarOpen(true)}
           className="p-2 hover:bg-gray-100 rounded-lg transition-all active:scale-95"
@@ -839,22 +853,36 @@ export const ChatInterface: React.FC = () => {
           </div>
 
           <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-            {(['html', 'nextjs', 'json', 'txt'] as const).map((mode) => (
-              <button 
-                key={mode}
-                onClick={() => setSelectedMode(mode)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === mode ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                {mode}
-              </button>
-            ))}
+            <button
+              onClick={() => setSelectedMode('html')}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'html' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              HTML
+            </button>
+            <button
+              onClick={() => setSelectedMode('tsx')}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'tsx' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              TSX
+            </button>
           </div>
+
+          <button
+            onClick={() => setIsTw4GodMode(prev => !prev)}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all ${isTw4GodMode ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+            title="Toggle GLOBAL TW4 GOD mode"
+          >
+            TW4 GOD {isTw4GodMode ? 'ON' : 'OFF'}
+          </button>
         </div>
 
         <div className="flex-1"></div>
 
         <button 
-          onClick={() => setIsKeyModalOpen(true)}
+          onClick={() => {
+            setTempKey(getSyncedGeminiKey());
+            setIsKeyModalOpen(true);
+          }}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors active:scale-95 text-gray-600"
           title="Update API Key"
         >
@@ -879,6 +907,45 @@ export const ChatInterface: React.FC = () => {
             </button>
           </div>
         )}
+        </div>
+
+        <div className="flex lg:hidden items-center justify-between gap-2">
+          <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full">
+            <button 
+              onClick={() => setSelectedModel("gemini-3.1-pro-preview")}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedModel === "gemini-3.1-pro-preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              Pro 3.1
+            </button>
+            <button 
+              onClick={() => setSelectedModel("gemini-3-flash-preview")}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedModel === "gemini-3-flash-preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              Flash 3
+            </button>
+          </div>
+          <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+            <button
+              onClick={() => setSelectedMode('html')}
+              className={`px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'html' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              HTML
+            </button>
+            <button
+              onClick={() => setSelectedMode('tsx')}
+              className={`px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedMode === 'tsx' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              TSX
+            </button>
+          </div>
+          <button
+            onClick={() => setIsTw4GodMode(prev => !prev)}
+            className={`px-2 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap ${isTw4GodMode ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200'}`}
+            title="Toggle GLOBAL TW4 GOD mode"
+          >
+            TW4 {isTw4GodMode ? 'ON' : 'OFF'}
+          </button>
+        </div>
       </header>
 
       {/* Clear Chat Modal */}
@@ -985,6 +1052,9 @@ export const ChatInterface: React.FC = () => {
             <p className="text-[10px] text-center text-gray-400 font-medium">
               Powered by Gemini 3.1 Pro • Pixel-perfect Tailwind Generation
             </p>
+            <p className="text-[10px] text-center text-violet-500 font-semibold">
+              GLOBAL TW4 GOD MODE: {isTw4GodMode ? 'ENABLED' : 'DISABLED'}
+            </p>
           </div>
         </div>
       </div>
@@ -1030,6 +1100,13 @@ export const ChatInterface: React.FC = () => {
                   placeholder="Paste your API key here..."
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setTempKey(DEFAULT_GEMINI_API_KEY)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-dashed border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  Use synced default Gemini key
+                </button>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setIsKeyModalOpen(false)}
