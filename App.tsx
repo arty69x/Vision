@@ -10,7 +10,6 @@ import { getSyncedGeminiKey, setSyncedGeminiKey } from "./utils/apiKey";
 export default function App() {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [customKey, setCustomKey] = useState("");
-  const [isUsingCustomKey, setIsUsingCustomKey] = useState(false);
 
   useEffect(() => {
     const checkKey = async () => {
@@ -48,7 +47,6 @@ export default function App() {
     if (customKey.trim()) {
       setSyncedGeminiKey(customKey.trim());
       setHasKey(true);
-      setIsUsingCustomKey(true);
     }
   };
 

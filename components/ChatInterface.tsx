@@ -483,6 +483,13 @@ export const ChatInterface: React.FC = () => {
   const handleSendMessage = async (text: string, images?: string[], files?: { name: string, content: string }[]) => {
     setIsLoading(true);
     setIsSidebarOpen(false); // Close sidebar on send
+
+    const modeInstruction = selectedMode === 'tsx'
+      ? "Output mode: TSX React component only. Use Tailwind utility classes for all styling."
+      : "Output mode: Raw HTML only. Use Tailwind utility classes for all styling.";
+
+    const tw4Instruction = isTw4GodMode ? `\n${GLOBAL_TW4_USER_MODE_HINT}` : "";
+    const enrichedText = `${text.trim()}\n\n${modeInstruction}${tw4Instruction}`;
     
     // Auto-generate placeholder image if none provided and it's a design request
     let finalImages = images || [];
@@ -512,7 +519,7 @@ export const ChatInterface: React.FC = () => {
     // Construct user message parts
     const userParts: Part[] = [];
     if (text) {
-      userParts.push({ text });
+      userParts.push({ text: enrichedText });
     }
     if (files && files.length > 0) {
       files.forEach(file => {
@@ -569,7 +576,8 @@ export const ChatInterface: React.FC = () => {
       });
 
       abortControllerRef.current = new AbortController();
-      const streamResult = await sendMessageStream(text, history, finalImages, selectedMode, files, selectedModel);
+      const apiOutputMode = selectedMode === 'tsx' ? 'tsx' : 'html';
+      const streamResult = await sendMessageStream(enrichedText, history, finalImages, apiOutputMode, files, selectedModel);
 
       // Create a placeholder for the model response
       const modelMessageId = (Date.now() + 1).toString();
@@ -724,16 +732,6 @@ export const ChatInterface: React.FC = () => {
     ex.prompt.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const visionExamples = filteredExamples.filter(ex => 
-    ex.title.toLowerCase().includes("tailwind") || 
-    ex.prompt.toLowerCase().includes("tailwind")
-  );
-  
-  const otherExamples = filteredExamples.filter(ex => 
-    !ex.title.toLowerCase().includes("tailwind") && 
-    !ex.prompt.toLowerCase().includes("tailwind")
-  );
-
   return (
     <div className="flex flex-col h-screen bg-[#F8F9FB] text-gray-900 font-sans selection:bg-blue-100 overflow-hidden">
       {/* Sidebar Overlay */}
@@ -855,6 +853,14 @@ export const ChatInterface: React.FC = () => {
           <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
             <span className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-white text-blue-600 shadow-sm">Tailwind HTML</span>
           </div>
+
+          <button
+            onClick={() => setIsTw4GodMode(prev => !prev)}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all ${isTw4GodMode ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+            title="Toggle GLOBAL TW4 GOD mode"
+          >
+            TW4 GOD {isTw4GodMode ? 'ON' : 'OFF'}
+          </button>
         </div>
 
         <div className="flex-1"></div>
@@ -1014,6 +1020,9 @@ export const ChatInterface: React.FC = () => {
             
             <p className="text-[10px] text-center text-gray-400 font-medium">
               Powered by Gemini 3.1 Pro • Pixel-perfect Tailwind Generation
+            </p>
+            <p className="text-[10px] text-center text-violet-500 font-semibold">
+              GLOBAL TW4 GOD MODE: {isTw4GodMode ? 'ENABLED' : 'DISABLED'}
             </p>
           </div>
         </div>

@@ -401,6 +401,7 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
     if (part.executableCode) {
       const code = part.executableCode.code;
       const [copied, setCopied] = useState(false);
+      const [activeView, setActiveView] = useState<'code' | 'preview'>('code');
 
       const handleCopy = () => {
         navigator.clipboard.writeText(code);
@@ -428,6 +429,7 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
       };
 
       const isTailwind = code.includes('className=') || code.includes('class=');
+      const previewLanguage = (part.executableCode.language || '').toLowerCase().includes('html') ? 'html' : 'tsx';
 
       return (
         <CollapsiblePart
@@ -439,14 +441,24 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
         >
           <div className="absolute right-2 top-2 flex gap-2 opacity-100 md:opacity-0 md:group-hover/code:opacity-100 transition-opacity z-10">
             {isTailwind && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); handlePreview(); }}
-                className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5 px-3"
-                title="Open Live Preview in New Tab"
-              >
-                <ExternalLink size={14} />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Preview UI</span>
-              </button>
+              <>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setActiveView(activeView === 'code' ? 'preview' : 'code'); }}
+                  className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-1.5 px-3"
+                  title="Toggle in-chat preview"
+                >
+                  {activeView === 'preview' ? <EyeOff size={14} /> : <Eye size={14} />}
+                  <span className="text-[10px] font-bold uppercase tracking-wider">{activeView === 'preview' ? 'Code' : 'Preview'}</span>
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handlePreview(); }}
+                  className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5 px-3"
+                  title="Open Live Preview in New Tab"
+                >
+                  <ExternalLink size={14} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">New Tab</span>
+                </button>
+              </>
             )}
             <button 
               onClick={(e) => { e.stopPropagation(); handleCopy(); }}
@@ -466,8 +478,11 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
             </button>
           </div>
           <div className="p-3">
-            <div className="overflow-x-auto">
-              {isStreaming && !code ? (
+            {activeView === 'preview' && isTailwind ? (
+              <LivePreview code={code} language={previewLanguage} />
+            ) : (
+              <div className="overflow-x-auto">
+                {isStreaming && !code ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-8 bg-gray-900/50 rounded-lg border border-dashed border-gray-700/50">
                   <Loader2 size={24} className="animate-spin text-blue-500" />
                   <div className="flex flex-col items-center">
@@ -479,8 +494,9 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({ message, isStreami
                 <pre className="text-xs text-white font-mono">
                   <code>{code}</code>
                 </pre>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </CollapsiblePart>
       );
